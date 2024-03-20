@@ -1,31 +1,37 @@
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue';
 import axios from 'axios';
+import Modal from './Modal.vue'
+
 
 interface User {
   id: number;
   name: string;
-  username: string;
+  phone: string;
   email: string;
 }
 
 export default defineComponent({
   name: 'UserTable',
+  components: {
+    Modal
+  },
   setup() {
     const users = ref<User[]>([]);
+    const isVisible = ref(false)
 
     const fetchUsers = async () => {
       const response = await axios.get('https://jsonplaceholder.typicode.com/users');
       users.value = response.data;
     };
-
+    
     const deleteUser = (userId: number) => {
       users.value = users.value.filter(user => user.id !== userId);
     };
 
     onMounted(fetchUsers);
 
-    return { users, deleteUser };
+    return { users, deleteUser , isVisible};
   }
 });
 
@@ -33,14 +39,19 @@ export default defineComponent({
 
 <template>
   <div class="container">
-    <h1>Users</h1>
+    <div class="wrapper" style="display: flex; justify-content: flex-end; width:100% ">
+      <button type="button" class="btn btn-primary" @click="isVisible=true">
+        <i class="fas fa-plus" style="margin-right: 5px;"></i> Create New User
+      </button>
+    </div>
     <table class="table">
       <thead>
         <tr>
-          <th scope="col">#</th>
+          <th scope="col">ID</th>
+          
           <th scope="col">Name</th>
-          <th scope="col">Username</th>
           <th scope="col">Email</th>
+          <th scope="col">Phone</th>
           <th scope="col">Actions</th>
         </tr>
       </thead>
@@ -48,14 +59,20 @@ export default defineComponent({
         <tr v-for="(user, index) in users" :key="user.id">
           <th scope="row">{{ index + 1 }}</th>
           <td>{{ user.name }}</td>
-          <td>{{ user.username }}</td>
           <td>{{ user.email }}</td>
-          <td>
-            <button class="btn btn-danger" @click="deleteUser(user.id)">Delete</button>
+          <td>{{ user.phone }}</td>
+          <td style="justify-content: space-around;">
+            <font-awesome-icon icon="pen" style="margin-right: 20px;" />
+            <button class="btn delete" @click="deleteUser(user.id)" title="Delete">
+              <font-awesome-icon icon="trash" @click="deleteUser(user.id)" />
+            </button>
           </td>
         </tr>
       </tbody>
     </table>
+    <Modal v-if="isVisible" :isVisible= "isVisible" @close="isVisible = false">
+      AAA
+    </Modal>
   </div>
 </template>
 
