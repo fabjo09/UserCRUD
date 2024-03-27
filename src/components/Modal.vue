@@ -1,5 +1,5 @@
 <script lang="ts">
-import { defineComponent, ref, watch, computed, PropType } from 'vue';
+import { defineComponent, ref, watch, computed, PropType, onMounted, reactive } from 'vue';
 import { User } from '../common/types';
 
 export default defineComponent({
@@ -16,7 +16,7 @@ export default defineComponent({
   },
   emits: ['close', 'new-user'],
   setup(props, { emit }) {
-    const user = ref<User>({
+    const user = reactive<User>({
       id: 0,
       name: '',
       username: '',
@@ -51,48 +51,29 @@ export default defineComponent({
       return props.user || user.value;
     });
 
-    let autocomplete;
+    const addressRef = ref()
+    onMounted(() => {
+        const autocomplete = new google.maps.places.Autocomplete(addressRef.value, {
+            types: ['geocode'],
+        })
 
-    const initAutocomplete = () => {
-      autocomplete = new google.maps.places.Autocomplete(document.getElementById('street'), { types: ['geocode'] });
-      autocomplete.addListener('place_changed', fillInAddress);
-    };
+        google.maps.event.addListener(autocomplete, 'place_changed', () => {
+
+            let place = autocomplete.getPlace();
+            user.address.street = place.name
+            user.address.city = place.vicinity
+            user.address.geo.lat = place.geometry.location.lat()
+            user.address.geo.lng = place.geometry.location.lng()
+            place.address_components.forEach((component) => {
+                if (component.types.includes('postal_code')) {
+                    user.address.zipcode = component.long_name
+                } else {
+                    user.address.zipcode = ''
+                }
+            })
+        })
+    })
     
-
-    const fillInAddress = () => {
-      const place = autocomplete.getPlace();
-      let address = { street: '', city: '', zipcode: '', geo: { lat: '', lng: '' } };
-
-      for (const component of place.address_components) {
-        const addressType = component.types[0];
-        switch (addressType) {
-          case 'route':
-            address.street = component.long_name;
-            break;
-          case 'locality':
-            address.city = component.long_name;
-            break;
-          case 'postal_code':
-            address.zipcode = component.long_name;
-            break;
-        }
-      }
-
-      if (place.geometry) {
-        address.geo.lat = place.geometry.location.lat().toString();
-        address.geo.lng = place.geometry.location.lng().toString();
-      }
-
-      user.value.address = address;
-    };
-
-    watch(() => props.isVisible, (newValue) => {
-      if (newValue && window.google && window.google.maps && useLocation.value) {
-        initAutocomplete();
-      }
-    });
-    
-
     watch(() => props.user, (newUser) => {
       if (newUser) {
         user.value = JSON.parse(JSON.stringify(newUser));
@@ -125,7 +106,7 @@ export default defineComponent({
     }
 };
   
-    return { safeUser, errors, validateForm, useLocation , initAutocomplete};
+    return { safeUser, errors, validateForm, useLocation};
   },
 });
 </script>
@@ -158,7 +139,7 @@ export default defineComponent({
                       <span class="me-2">Use Google Location</span>
                     </div>
                   </div>
-                  <input type="text" class="form-control" id="street" v-model="safeUser.address.street" placeholder="River 43" @focus="initAutocomplete">
+                  <input type="text" class="form-control" id="street" v-model="safeUser.address.street" placeholder="River 43" ref="addressRef">
                   <div v-if="errors.street" class="invalid-feedback d-block">{{ errors.street }}</div>
                 </div>
               </div>
