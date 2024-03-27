@@ -7,15 +7,15 @@ export interface Geo {
     street: string;
     city: string;
     zipcode: string;
-    geo?: Geo | undefined;
+    geo?: Geo;
   }
   
  export interface User {
-    id?: number;
+    id: number;
     name: string;
-    userName: string;
+    username: string;
     email: string;
     address: Address;
-    phoneNumber: string;
+    phone: string;
   }
   

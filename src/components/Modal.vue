@@ -1,70 +1,135 @@
 <script lang="ts">
-import { defineComponent, PropType, ref } from 'vue';
+import { defineComponent, ref, watch, computed, PropType } from 'vue';
 import { User } from '../common/types';
 
 export default defineComponent({
   name: 'Modal',
   props: {
     isVisible: {
-      type: Boolean as PropType<boolean>,
+      type: Boolean,
       required: true
+    },
+    user: {
+      type: Object as PropType<User | null>,
+      default: () => null
     }
   },
   emits: ['close', 'new-user'],
-  setup(_props, {emit}) {
+  setup(props, { emit }) {
     const user = ref<User>({
+      id: 0,
       name: '',
-      userName: '',
+      username: '',
       email: '',
       address: {
         street: '',
         city: '',
         zipcode: '',
         geo: {
-          lat: '' ,
+          lat: '',
           lng: ''
         }
       },
-      phoneNumber: '',
+      phone: '',
     });
 
     const errors = ref({
       name: '',
-      userName: '',
+      username: '',
       email: '',
       street: '',
       city: '',
       zipcode: '',
-      phoneNumber: '',
+      phone: '',
       lat: '',
       lng: '',
     });
 
     const useLocation = ref(false);
 
-    const validateForm = () => {
-      errors.value.name = user.value.name ? '' : 'Full name is required.';
-      errors.value.street = user.value.address.street ? '' : 'Address is required.';
-      errors.value.phoneNumber = user.value.phoneNumber && /^\d{10}$/.test(user.value.phoneNumber) ? '' : 'Phone number is invalid.';
-      errors.value.userName = user.value.userName ? '' : 'Username is required';
-      errors.value.city = user.value.address.city ? '' : 'City is required';
-      errors.value.email = user.value.email && /\S+@\S+\.\S+/.test(user.value.email) ? '' : 'Email is invalid.';
-      errors.value.zipcode = user.value.address.zipcode ? '' : 'Zip Code is required'
+    const safeUser = computed(() => {
+      return props.user || user.value;
+    });
 
-      const isValid = !Object.values(errors.value).some(error => error !=='')
+    let autocomplete;
 
-    if (isValid) {
-        emit('new-user', user.value);
-        emit('close'); 
+    const initAutocomplete = () => {
+      autocomplete = new google.maps.places.Autocomplete(document.getElementById('street'), { types: ['geocode'] });
+      autocomplete.addListener('place_changed', fillInAddress);
+    };
+    
+
+    const fillInAddress = () => {
+      const place = autocomplete.getPlace();
+      let address = { street: '', city: '', zipcode: '', geo: { lat: '', lng: '' } };
+
+      for (const component of place.address_components) {
+        const addressType = component.types[0];
+        switch (addressType) {
+          case 'route':
+            address.street = component.long_name;
+            break;
+          case 'locality':
+            address.city = component.long_name;
+            break;
+          case 'postal_code':
+            address.zipcode = component.long_name;
+            break;
+        }
       }
-      return isValid;
+
+      if (place.geometry) {
+        address.geo.lat = place.geometry.location.lat().toString();
+        address.geo.lng = place.geometry.location.lng().toString();
+      }
+
+      user.value.address = address;
     };
 
-    return { user, errors, validateForm, useLocation };
+    watch(() => props.isVisible, (newValue) => {
+      if (newValue && window.google && window.google.maps && useLocation.value) {
+        initAutocomplete();
+      }
+    });
+    
+
+    watch(() => props.user, (newUser) => {
+      if (newUser) {
+        user.value = JSON.parse(JSON.stringify(newUser));
+      } else {
+        user.value = { id: 0, name: '', username: '', email: '', address: { street: '', city: '', zipcode: '', geo: { lat: '', lng: '' } }, phone: '' };
+      }
+    }, { immediate: true });
+
+    const validateForm = () => {
+    const phoneRegex = /^[\d-]+$/;
+    const zipcodeRegex = /^[\d-]+$/;
+
+    errors.value = {
+        name: safeUser.value.name ? '' : 'Full name is required.',
+        username: safeUser.value.username ? '' : 'Username is required',
+        email: safeUser.value.email && /\S+@\S+\.\S+/.test(safeUser.value.email) ? '' : 'Email is invalid.',
+        street: safeUser.value.address.street ? '' : 'Address is required.',
+        city: safeUser.value.address.city ? '' : 'City is required',
+        zipcode: safeUser.value.address.zipcode && zipcodeRegex.test(safeUser.value.address.zipcode) ? '' : 'Zip Code is required and must be numeric',
+        phone: safeUser.value.phone && phoneRegex.test(safeUser.value.phone) ? '' : 'Phone number is required and must be numeric',
+        lat: useLocation.value && safeUser.value.address.geo?.lat && /^[+-]?([0-9]*[.])?[0-9]+$/.test(safeUser.value.address.geo.lat) ? '' : (useLocation.value ? 'Latitude is required and must be a valid number.' : ''),
+        lng: useLocation.value && safeUser.value.address.geo?.lng && /^[+-]?([0-9]*[.])?[0-9]+$/.test(safeUser.value.address.geo.lng) ? '' : (useLocation.value ? 'Longitude is required and must be a valid number.' : ''),
+    };
+
+    const isValid = !Object.values(errors.value).some(error => error !== '');
+
+    if (isValid) {
+        emit('new-user', JSON.parse(JSON.stringify(safeUser.value)));
+        emit('close');
+    }
+};
+  
+    return { safeUser, errors, validateForm, useLocation , initAutocomplete};
   },
- 
 });
 </script>
+
 
 <template>
   <div class="modal fade" :class="{ show: isVisible }" style="display: block;" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
@@ -80,20 +145,20 @@ export default defineComponent({
               <div class="col">
                 <div class="mb-3">
                   <label for="name" class="form-label">Full Name</label>
-                  <input type="text" class="form-control" id="name" v-model="user.name" placeholder="John Gonzales">
+                  <input type="text" class="form-control" id="name" v-model="safeUser.name" placeholder="John Gonzales">
                   <div v-if="errors.name" class="invalid-feedback d-block">{{ errors.name }}</div>
                 </div>
               </div>
-              <div class="col-12 col-md-6"> <!-- Adjusted for label, checkbox, and input layout -->
+              <div class="col-12 col-md-6">
                 <div class="mb-3">
-                  <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Flex container for horizontal alignment -->
-                    <label for="addressCheckbox" class="form-check-label">Location</label>
-                    <div class="d-flex align-items-center gap-1"> <!-- Inline container for checkbox and description -->
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label for="addressCheckbox" class="form-check-label">Address</label>
+                    <div class="d-flex align-items-center gap-1">
                       <input type="checkbox" class="form-check-input" id="addressCheckbox" v-model="useLocation">
-                      <span class="me-2">Use Google Location</span> <!-- Description next to the checkbox -->
+                      <span class="me-2">Use Google Location</span>
                     </div>
                   </div>
-                  <input type="text" class="form-control" id="street" v-model="user.address.street" placeholder="River 43">
+                  <input type="text" class="form-control" id="street" v-model="safeUser.address.street" placeholder="River 43" @focus="initAutocomplete">
                   <div v-if="errors.street" class="invalid-feedback d-block">{{ errors.street }}</div>
                 </div>
               </div>
@@ -101,15 +166,15 @@ export default defineComponent({
             <div class="row">
               <div class="col">
                 <div class="mb-3">
-                  <label for="userName" class="form-label">Username</label>
-                  <input type="text" class="form-control" id="userName" v-model="user.userName" placeholder="johngonzales123">
-                  <div v-if="errors.userName" class="invalid-feedback d-block">{{ errors.userName }}</div>
+                  <label for="username" class="form-label">Username</label>
+                  <input type="text" class="form-control" id="username" v-model="safeUser.username" placeholder="johngonzales123">
+                  <div v-if="errors.username" class="invalid-feedback d-block">{{ errors.username }}</div>
                 </div>
               </div>
               <div class="col">
                 <div class="mb-3">
                   <label for="city" class="form-label">City</label>
-                  <input type="text" class="form-control" id="city" v-model="user.address.city" placeholder="Tirana">
+                  <input type="text" class="form-control" id="city" v-model="safeUser.address.city" placeholder="Tirana">
                   <div v-if="errors.city" class="invalid-feedback d-block">{{ errors.city }}</div>
                 </div>
               </div>
@@ -118,14 +183,14 @@ export default defineComponent({
               <div class="col">
                 <div class="mb-3">
                   <label for="email" class="form-label">Email</label>
-                  <input type="email" class="form-control" id="email" v-model="user.email" placeholder="johngonzales123@gmail.com">
+                  <input type="email" class="form-control" id="email" v-model="safeUser.email" placeholder="johngonzales123@gmail.com">
                   <div v-if="errors.email" class="invalid-feedback d-block">{{ errors.email }}</div>
                 </div>
               </div>
               <div class="col">
                 <div class="mb-3">
                   <label for="zipCode" class="form-label">Zip Code</label>
-                  <input type="zipCode" class="form-control" id="zipCode" v-model="user.address.zipcode" placeholder="1060">
+                  <input type="zipCode" class="form-control" id="zipCode" v-model="safeUser.address.zipcode" pattern="[\d-]+" placeholder="1060">
                   <div v-if="errors.zipcode" class="invalid-feedback d-block">{{ errors.zipcode }}</div>
                 </div>
               </div>
@@ -133,30 +198,29 @@ export default defineComponent({
             <div class="row">
               <div class="col-6">
                 <div class="mb-3 phone-max-width">
-                  <label for="phoneNumber" class="form-label">Phone Number</label>
-                  <input type="text" class="form-control" id="phoneNumber" v-model="user.phoneNumber" placeholder="Enter phone number">
-                  <div v-if="errors.phoneNumber" class="invalid-feedback d-block">{{ errors.phoneNumber }}</div>
+                  <label for="phone" class="form-label">Phone Number</label>
+                  <input type="text" class="form-control" id="phone" v-model="safeUser.phone" pattern="[\d-]+" placeholder="Enter phone number">
+                  <div v-if="errors.phone" class="invalid-feedback d-block">{{ errors.phone }}</div>
                 </div>
               </div>
-              <div class="col-6" v-if="useLocation"> <!-- Conditional rendering for both lat and lng -->
+              <div class="col-6" v-if="useLocation">
                 <div class="row">
                   <div class="col-6">
                     <div class="mb-3">
                       <label for="latitude" class="form-label">Latitude</label>
-                      <input type="text" class="form-control" id="latitude" v-model="user.address.geo.lat" placeholder="Latitude">
+                      <input type="text" class="form-control" id="latitude" v-model="safeUser.address.geo.lat" placeholder="Latitude">
                     </div>
                   </div>
                   <div class="col-6">
                     <div class="mb-3">
                       <label for="longitude" class="form-label">Longitude</label>
-                      <input type="text" class="form-control" id="longitude" v-model="user.address.geo.lng" placeholder="Longitude">
+                      <input type="text" class="form-control" id="longitude" v-model="safeUser.address.geo.lng" placeholder="Longitude">
                     </div>
                   </div>
                 </div>
               </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="$emit('close')">Close</button>
               <button type="submit" class="btn btn-primary">Save</button>
             </div>
           </form>
@@ -182,7 +246,7 @@ export default defineComponent({
   }
 
   .form-control {
-  width: 100%; /* Make the input take the full width of its container */
+  width: 100%;
 }
 
 </style>

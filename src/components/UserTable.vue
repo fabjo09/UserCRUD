@@ -12,6 +12,7 @@ export default defineComponent({
   },
   setup() {
     const users: Ref<User[]> = ref([]);
+    const editableUser = ref<User | null>(null);
     const isVisible: Ref<boolean> = ref(false);
     const currentPage: Ref<number> = ref(1);
     const pageSize: Ref<number> = ref(7);
@@ -31,13 +32,32 @@ export default defineComponent({
       users.value = response.data;
       totalUsers.value = response.data.length
     };
+
+    const handleUserUpdate = (userFromModal: User) => {
+      const index = users.value.findIndex(user => user.id === userFromModal.id);
+      if (index !== -1) {
+        users.value[index] = { ...userFromModal };
+      } else {
+        const newUser = { ...userFromModal, id: users.value.length + 1 };
+        users.value.push(newUser);
+        totalUsers.value += 1;
+      }
+      isVisible.value = false;
+    };
     
-    const addUser = (newUser: User) => {
-      users.value.push({ ...newUser, id: users.value.length + 1 });
+    const openModalForEdit = (user: User) => {
+      editableUser.value = { ...user };
+      isVisible.value = true;
+    };
+
+    const openModalForNewUser = () => {
+      editableUser.value = null; 
+      isVisible.value = true;
     };
 
     const deleteUser = (userId: number) => {
       users.value = users.value.filter(user => user.id !== userId);
+      totalUsers.value = users.value.length;
     };
 
     const changePage = (newPage: number) => {
@@ -46,7 +66,7 @@ export default defineComponent({
 
     onMounted(fetchUsers);
 
-     return { paginatedUsers, addUser, deleteUser, isVisible, changePage, currentPage, totalPages };
+     return { paginatedUsers,openModalForEdit,handleUserUpdate, openModalForNewUser, deleteUser, isVisible, changePage, currentPage, totalPages,editableUser };
   }
 });
 
@@ -55,7 +75,7 @@ export default defineComponent({
 <template>
   <div class="container">
     <div class="wrapper" style="display: flex; justify-content: flex-end; width:100% ">
-      <button type="button" class="btn btn-primary" @click="isVisible=true">
+      <button type="button" class="btn btn-primary" @click="openModalForNewUser">
         <font-awesome-icon icon="plus" /> Create New User
       </button>
     </div>
@@ -70,13 +90,15 @@ export default defineComponent({
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(user, index) in paginatedUsers" :key="user.id">
-          <th scope="row">{{ index + 1 }}</th>
+        <tr v-for="(user) in paginatedUsers" :key="user.id">
+          <th scope="row">{{ user.id }}</th>
           <td>{{ user.name }}</td>
           <td>{{ user.email }}</td>
           <td>{{ user.phone }}</td>
           <td style="justify-content: space-around;">
-            <font-awesome-icon icon="pen" style="margin-right: 20px;" />
+            <button class="btn" @click="openModalForEdit(user)">
+              <font-awesome-icon icon="pen"/>
+            </button>
             <button class="btn delete" @click="deleteUser(user.id)" title="Delete">
               <font-awesome-icon icon="trash" @click="deleteUser(user.id)" />
             </button>
@@ -84,7 +106,7 @@ export default defineComponent({
         </tr>
       </tbody>
     </table>
-    <nav aria-label="User pagination">
+    <nav aria-label="User pagination" v-if="totalPages > 1">
       <ul class="pagination">
         <li class="page-item" :class="{ disabled: currentPage === 1 }">
           <button class="page-link" @click="changePage(currentPage - 1)" :disabled="currentPage === 1">Previous</button>
@@ -97,7 +119,7 @@ export default defineComponent({
         </li>
       </ul>
     </nav>
-    <Modal v-if="isVisible" :isVisible="isVisible" @close="isVisible=false" @new-user="addUser"></Modal>
+    <Modal v-if="isVisible" :isVisible="isVisible" :user="editableUser" @close="isVisible=false"  @new-user="handleUserUpdate"></Modal>
   </div>
 </template>
 
@@ -112,9 +134,7 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   padding: 20px;
-
 }
-
 
 @media (max-height: 600px) {
   .container {
@@ -127,4 +147,15 @@ export default defineComponent({
     padding: 5px;
   }
 }
+
+.table tbody tr {
+  border: 1px solid black;
+  margin-bottom: 15px;
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
 </style>
